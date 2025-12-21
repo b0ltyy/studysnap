@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import AuthPanel from "@/components/AuthPanel";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
+import Reveal from "@/components/Reveal";
+import { ScrollProgressBar } from "@/components/ScrollProgressBar";
 
 type Q = {
   type: "short_answer" | "true_false" | "multiple_choice";
@@ -229,8 +231,10 @@ function scoreAnswer(q: Q, userAnswer: string): ScoreResult {
 
   const combined = Math.max(bestSim, bestSim * 0.65 + bestJ * 0.35) + containsBoost;
 
-  if (combined >= 0.88) return { points: 1, label: "correct", reason: `Sterke match (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
-  if (combined >= 0.68) return { points: 0.5, label: "partial", reason: `Bijna goed (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
+  if (combined >= 0.88)
+    return { points: 1, label: "correct", reason: `Sterke match (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
+  if (combined >= 0.68)
+    return { points: 0.5, label: "partial", reason: `Bijna goed (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
   return { points: 0, label: "wrong", reason: `Te ver af (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
 }
 
@@ -333,10 +337,8 @@ export default function StudyPage() {
     setCheckedByIndex({});
   }
 
-  // ✅ LOAD history (geen insert!)
   async function loadSessions(u: User) {
     const supabase = getSupabase();
-
     const { data, error } = await supabase
       .from("study_sessions")
       .select("*")
@@ -345,7 +347,6 @@ export default function StudyPage() {
       .limit(20);
 
     if (error) {
-      // stil failen, niet je hele app slopen
       console.error("Load sessions error:", error);
       return;
     }
@@ -363,7 +364,6 @@ export default function StudyPage() {
     if (!user) return;
     const supabase = getSupabase();
 
-    // unieke key per run (zodat finish-effect niet dubbel opslaat)
     const key = `${params.mode}:${params.score}:${params.maxScore}:${params.total}:${result?.title ?? ""}:${checkedCount}`;
     if (savedRunKey === key) return;
 
@@ -384,7 +384,6 @@ export default function StudyPage() {
     }
   }
 
-  // auto-load sessions when user logs in
   useEffect(() => {
     if (user) loadSessions(user);
     else setSessions([]);
@@ -431,17 +430,10 @@ export default function StudyPage() {
       if (!res.ok || !json?.ok) throw new Error(json?.error || raw || `HTTP ${res.status}`);
 
       const data = json.data as Result;
-      if (!data?.questions?.length) {
-        throw new Error("AI gaf geen vragen terug. Probeer een scherpere foto.");
-      }
+      if (!data?.questions?.length) throw new Error("AI gaf geen vragen terug. Probeer een scherpere foto.");
 
-      // 🔀 RANDOMIZE QUESTIONS
       const shuffled = shuffle(data.questions);
-
-      setResult({
-        ...data,
-        questions: shuffled,
-      });
+      setResult({ ...data, questions: shuffled });
 
       const available = data.questions.length;
       const desired = parseInt(questionCountInput, 10);
@@ -459,12 +451,6 @@ export default function StudyPage() {
     setIndex(0);
     setCurrentAnswer(answersByIndex[0] ?? "");
     setChecked(checkedByIndex[0] ?? false);
-  }
-
-  function jumpTo(i: number) {
-    setIndex(i);
-    setCurrentAnswer(answersByIndex[i] ?? "");
-    setChecked(checkedByIndex[i] ?? false);
   }
 
   function checkAnswer() {
@@ -504,12 +490,11 @@ export default function StudyPage() {
     setChecked(checkedByIndex[newIndex] ?? false);
   }
 
-  // save session once when finished
   useEffect(() => {
     if (!finished) return;
     if (!user) return;
 
-    const maxScore = visibleQuestions.length; // 1 punt per vraag
+    const maxScore = visibleQuestions.length;
     const score = totalPoints;
 
     saveSessionOnce({
@@ -524,476 +509,490 @@ export default function StudyPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: pageBg, color: "white" }}>
-      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "18px 16px" }}>
-        {/* Simple header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img
-              src="/logo.png"
-              alt="StudySnap"
-              width={34}
-              height={34}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 12,
-                objectFit: "cover",
-                border: "1px solid rgba(255,255,255,0.10)",
-                boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
-              }}
-            />
+      <ScrollProgressBar />
 
-            <div style={{ lineHeight: 1.05 }}>
-              <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>StudySnap</div>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Study mode</div>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "18px 16px" }}>
+        {/* Header */}
+        <Reveal>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <img
+                src="/logo.png"
+                alt="StudySnap"
+                width={34}
+                height={34}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  objectFit: "cover",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+                }}
+              />
+
+              <div style={{ lineHeight: 1.05 }}>
+                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>StudySnap</div>
+                <div style={{ fontSize: 12, opacity: 0.7 }}>Study mode</div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Pill>🧠 smart scoring</Pill>
+              <Pill>🎯 1 at a time</Pill>
             </div>
           </div>
+        </Reveal>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Pill>🧠 smart scoring</Pill>
-            <Pill>🎯 1 at a time</Pill>
-          </div>
-        </div>
-
-        {/* App */}
+        {/* App grid */}
         <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, alignItems: "start" }}>
           {/* Left */}
-          <div
-            style={{
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.06)",
-              padding: 16,
-              boxShadow: "0 35px 100px rgba(0,0,0,0.35)",
-            }}
-          >
-            <div style={{ fontWeight: 950, marginBottom: 8 }}>Upload & generate</div>
+          <Reveal delay={0.05}>
+            <div
+              style={{
+                borderRadius: 18,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.06)",
+                padding: 16,
+                boxShadow: "0 35px 100px rgba(0,0,0,0.35)",
+              }}
+            >
+              <div style={{ fontWeight: 950, marginBottom: 8 }}>Upload & generate</div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-              <label
-                style={{
-                  display: "inline-flex",
-                  gap: 10,
-                  alignItems: "center",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(0,0,0,0.20)",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                📷 Upload photo
-                <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
-              </label>
-
-              <button
-                onClick={generate}
-                disabled={busy}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(99,102,241,0.55)",
-                  background: busy ? "rgba(255,255,255,0.12)" : "linear-gradient(135deg, rgba(99,102,241,0.95), rgba(34,197,94,0.80))",
-                  color: busy ? "rgba(255,255,255,0.7)" : "white",
-                  cursor: busy ? "not-allowed" : "pointer",
-                  fontWeight: 950,
-                }}
-              >
-                {busy ? "Generating..." : "Generate quiz"}
-              </button>
-
-              <button
-                onClick={resetAll}
-                disabled={busy}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "rgba(255,255,255,0.90)",
-                  cursor: busy ? "not-allowed" : "pointer",
-                  fontWeight: 800,
-                }}
-              >
-                Reset
-              </button>
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>Questions:</div>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={questionCountInput}
-                onChange={(e) => setQuestionCountInput(e.target.value.replace(/\D/g, ""))}
-                onBlur={() => {
-                  if (!questionCountInput) return setQuestionCountInput("10");
-                  const n = Math.max(1, Math.min(50, parseInt(questionCountInput, 10)));
-                  setQuestionCountInput(String(n));
-                }}
-                disabled={busy}
-                style={{
-                  width: 110,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(0,0,0,0.18)",
-                  color: "white",
-                  outline: "none",
-                  cursor: busy ? "not-allowed" : "text",
-                  fontWeight: 950,
-                }}
-                placeholder="10"
-              />
-              <Pill>Min 1 • Max 50</Pill>
-
-              {result && (
-                <>
-                  <Pill>
-                    Available: <b style={{ marginLeft: 6 }}>{result.questions.length}</b>
-                  </Pill>
-                  <Pill>
-                    Using: <b style={{ marginLeft: 6 }}>{visibleQuestions.length}</b>
-                  </Pill>
-                </>
-              )}
-            </div>
-
-            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              {fileInfo ? (
-                <>
-                  <Pill>✅ {fileInfo.name}</Pill>
-                  <Pill>{fileInfo.mb} MB</Pill>
-                </>
-              ) : (
-                <Pill>Tip: straight + sharp photo</Pill>
-              )}
-            </div>
-
-            {error && (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,80,80,0.35)",
-                  background: "rgba(255,80,80,0.10)",
-                  color: "rgba(255,230,230,0.95)",
-                }}
-              >
-                <b>Error:</b> {error}
-              </div>
-            )}
-
-            {result && !quizStarted && (
-              <div style={{ marginTop: 14 }}>
-                <button
-                  onClick={startQuiz}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                <label
                   style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    borderRadius: 16,
+                    display: "inline-flex",
+                    gap: 10,
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    borderRadius: 14,
                     border: "1px solid rgba(255,255,255,0.14)",
                     background: "rgba(0,0,0,0.20)",
-                    color: "white",
-                    fontWeight: 950,
                     cursor: "pointer",
+                    fontWeight: 900,
                   }}
                 >
-                  Start ({visibleQuestions.length} questions) →
+                  📷 Upload photo
+                  <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+                </label>
+
+                <button
+                  onClick={generate}
+                  disabled={busy}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(99,102,241,0.55)",
+                    background: busy ? "rgba(255,255,255,0.12)" : "linear-gradient(135deg, rgba(99,102,241,0.95), rgba(34,197,94,0.80))",
+                    color: busy ? "rgba(255,255,255,0.7)" : "white",
+                    cursor: busy ? "not-allowed" : "pointer",
+                    fontWeight: 950,
+                  }}
+                >
+                  {busy ? "Generating..." : "Generate quiz"}
+                </button>
+
+                <button
+                  onClick={resetAll}
+                  disabled={busy}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.06)",
+                    color: "rgba(255,255,255,0.90)",
+                    cursor: busy ? "not-allowed" : "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Reset
                 </button>
               </div>
-            )}
-          </div>
 
-          {/* Right */}
-          <div>
-            <div
-              style={{
-                marginTop: 0,
-                borderRadius: 18,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,255,255,0.04)",
-                padding: 16,
-              }}
-            >
-              <div style={{ fontWeight: 950, marginBottom: 8 }}>Account</div>
-              <AuthPanel onUser={setUser} />
-            </div>
+              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ fontSize: 12, opacity: 0.85 }}>Questions:</div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={questionCountInput}
+                  onChange={(e) => setQuestionCountInput(e.target.value.replace(/\D/g, ""))}
+                  onBlur={() => {
+                    if (!questionCountInput) return setQuestionCountInput("10");
+                    const n = Math.max(1, Math.min(50, parseInt(questionCountInput, 10)));
+                    setQuestionCountInput(String(n));
+                  }}
+                  disabled={busy}
+                  style={{
+                    width: 110,
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(0,0,0,0.18)",
+                    color: "white",
+                    outline: "none",
+                    cursor: busy ? "not-allowed" : "text",
+                    fontWeight: 950,
+                  }}
+                  placeholder="10"
+                />
+                <Pill>Min 1 • Max 50</Pill>
 
-            <div
-              style={{
-                marginTop: 12,
-                borderRadius: 18,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,255,255,0.04)",
-                padding: 16,
-              }}
-            >
-              <div style={{ fontWeight: 950, marginBottom: 8 }}>History</div>
-
-              {!user ? (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>Log in om je sessies te bewaren.</div>
-              ) : sessions.length === 0 ? (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>Nog geen sessies. Maak je eerste quiz af.</div>
-              ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {sessions.map((s) => {
-                    const pct = s.max_score ? Math.round((Number(s.score) / Number(s.max_score)) * 100) : 0;
-                    const date = new Date(s.created_at).toLocaleString();
-                    return (
-                      <div
-                        key={s.id}
-                        style={{
-                          padding: 10,
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(0,0,0,0.18)",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 10,
-                          alignItems: "center",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, opacity: 0.8 }}>
-                          <div style={{ fontWeight: 900, opacity: 0.95 }}>
-                            {s.mode === "retry" ? "🔁 Retry" : "✅ Normal"} • {pct}%
-                          </div>
-                          <div>{date}</div>
-                        </div>
-                        <div style={{ fontWeight: 950 }}>
-                          {Number(s.score).toFixed(1)}/{Number(s.max_score).toFixed(0)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div
-              style={{
-                marginTop: 12,
-                borderRadius: 18,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,255,255,0.04)",
-                padding: 16,
-              }}
-            >
-              <div style={{ fontWeight: 950, marginBottom: 8 }}>Progress</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Pill>
-                  Checked <b style={{ marginLeft: 6 }}>{checkedCount}/{visibleQuestions.length}</b>
-                </Pill>
-                <Pill>
-                  Score <b style={{ marginLeft: 6 }}>{totalPoints.toFixed(1)}/{visibleQuestions.length}</b>
-                </Pill>
-                {finished && (
+                {result && (
                   <>
-                    <Pill>🎉 klaar</Pill>
-                    <button
-                      onClick={retryWrongQuestions}
-                      style={{
-                        marginLeft: 8,
-                        padding: "6px 10px",
-                        borderRadius: 10,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(255,193,7,0.20)",
-                        color: "white",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      🔁 Herhaal foutjes
-                    </button>
+                    <Pill>
+                      Available: <b style={{ marginLeft: 6 }}>{result.questions.length}</b>
+                    </Pill>
+                    <Pill>
+                      Using: <b style={{ marginLeft: 6 }}>{visibleQuestions.length}</b>
+                    </Pill>
                   </>
                 )}
               </div>
 
-              <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
-                ✅ 1.0 correct • 🟨 0.5 almost • ❌ 0.0 wrong
+              <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {fileInfo ? (
+                  <>
+                    <Pill>✅ {fileInfo.name}</Pill>
+                    <Pill>{fileInfo.mb} MB</Pill>
+                  </>
+                ) : (
+                  <Pill>Tip: straight + sharp photo</Pill>
+                )}
               </div>
+
+              {error && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,80,80,0.35)",
+                    background: "rgba(255,80,80,0.10)",
+                    color: "rgba(255,230,230,0.95)",
+                  }}
+                >
+                  <b>Error:</b> {error}
+                </div>
+              )}
+
+              {result && !quizStarted && (
+                <div style={{ marginTop: 14 }}>
+                  <button
+                    onClick={startQuiz}
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      borderRadius: 16,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(0,0,0,0.20)",
+                      color: "white",
+                      fontWeight: 950,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Start ({visibleQuestions.length} questions) →
+                  </button>
+                </div>
+              )}
             </div>
+          </Reveal>
+
+          {/* Right */}
+          <div>
+            <Reveal delay={0.08}>
+              <div
+                style={{
+                  marginTop: 0,
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontWeight: 950, marginBottom: 8 }}>Account</div>
+                <AuthPanel onUser={setUser} />
+              </div>
+            </Reveal>
+
+            <Reveal delay={0.12}>
+              <div
+                style={{
+                  marginTop: 12,
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontWeight: 950, marginBottom: 8 }}>History</div>
+
+                {!user ? (
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>Log in om je sessies te bewaren.</div>
+                ) : sessions.length === 0 ? (
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>Nog geen sessies. Maak je eerste quiz af.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {sessions.map((s) => {
+                      const pct = s.max_score ? Math.round((Number(s.score) / Number(s.max_score)) * 100) : 0;
+                      const date = new Date(s.created_at).toLocaleString();
+                      return (
+                        <div
+                          key={s.id}
+                          style={{
+                            padding: 10,
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            background: "rgba(0,0,0,0.18)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, opacity: 0.8 }}>
+                            <div style={{ fontWeight: 900, opacity: 0.95 }}>
+                              {s.mode === "retry" ? "🔁 Retry" : "✅ Normal"} • {pct}%
+                            </div>
+                            <div>{date}</div>
+                          </div>
+                          <div style={{ fontWeight: 950 }}>
+                            {Number(s.score).toFixed(1)}/{Number(s.max_score).toFixed(0)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </Reveal>
+
+            <Reveal delay={0.16}>
+              <div
+                style={{
+                  marginTop: 12,
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontWeight: 950, marginBottom: 8 }}>Progress</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Pill>
+                    Checked <b style={{ marginLeft: 6 }}>{checkedCount}/{visibleQuestions.length}</b>
+                  </Pill>
+                  <Pill>
+                    Score <b style={{ marginLeft: 6 }}>{totalPoints.toFixed(1)}/{visibleQuestions.length}</b>
+                  </Pill>
+                  {finished && (
+                    <>
+                      <Pill>🎉 klaar</Pill>
+                      <button
+                        onClick={retryWrongQuestions}
+                        style={{
+                          marginLeft: 8,
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(255,193,7,0.20)",
+                          color: "white",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        🔁 Herhaal foutjes
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
+                  ✅ 1.0 correct • 🟨 0.5 almost • ❌ 0.0 wrong
+                </div>
+              </div>
+            </Reveal>
           </div>
         </div>
 
         {/* Quiz player */}
         {quizStarted && result && (
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Quiz</div>
-            <div style={{ fontSize: 22, fontWeight: 950 }}>{result.title || "Oefenvragen"}</div>
+          <Reveal delay={0.06}>
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Quiz</div>
+              <div style={{ fontSize: 22, fontWeight: 950 }}>{result.title || "Oefenvragen"}</div>
 
-            <div
-              style={{
-                marginTop: 12,
-                borderRadius: 18,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.04)",
-                padding: 16,
-              }}
-            >
-              {(() => {
-                const q = visibleQuestions[index];
-                if (!q) return null;
+              <div
+                style={{
+                  marginTop: 12,
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 16,
+                }}
+              >
+                {(() => {
+                  const q = visibleQuestions[index];
+                  if (!q) return null;
 
-                const isMC = q.type === "multiple_choice";
-                const canGoPrev = index > 0;
-                const canGoNext = index < visibleQuestions.length - 1;
+                  const isMC = q.type === "multiple_choice";
+                  const canGoPrev = index > 0;
+                  const canGoNext = index < visibleQuestions.length - 1;
 
-                const label = labelByIndex[index];
-                const pts = pointsByIndex[index] ?? 0;
+                  const label = labelByIndex[index];
+                  const pts = pointsByIndex[index] ?? 0;
 
-                return (
-                  <>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <Pill>
-                        {index + 1}/{visibleQuestions.length}
-                      </Pill>
-                      <Pill>{q.type}</Pill>
-                      <Pill>{q.difficulty}</Pill>
-                      {checked && (
+                  return (
+                    <>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <Pill>
-                          {pts >= 1 ? "✅ 1.0" : pts >= 0.5 ? "🟨 0.5" : "❌ 0.0"} {label ? `(${label})` : ""}
+                          {index + 1}/{visibleQuestions.length}
                         </Pill>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: 12, fontSize: 18 }}>
-                      <b>{q.question}</b>
-                    </div>
-
-                    <div style={{ marginTop: 12 }}>
-                      {isMC && q.choices?.length ? (
-                        <div style={{ display: "grid", gap: 8 }}>
-                          {q.choices.map((choice, idx) => {
-                            const selected = currentAnswer === choice;
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => setCurrentAnswer(choice)}
-                                disabled={busy || checked}
-                                style={{
-                                  textAlign: "left",
-                                  padding: "10px 12px",
-                                  borderRadius: 14,
-                                  border: "1px solid rgba(255,255,255,0.14)",
-                                  background: selected ? "rgba(99,102,241,0.25)" : "rgba(0,0,0,0.18)",
-                                  color: "white",
-                                  cursor: busy || checked ? "not-allowed" : "pointer",
-                                  fontWeight: 800,
-                                }}
-                              >
-                                {choice}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <input
-                          value={currentAnswer}
-                          onChange={(e) => setCurrentAnswer(e.target.value)}
-                          disabled={busy || checked}
-                          placeholder="Typ je antwoord…"
-                          style={{
-                            width: "100%",
-                            padding: "10px 12px",
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.14)",
-                            background: "rgba(0,0,0,0.18)",
-                            color: "white",
-                            outline: "none",
-                            fontSize: 15,
-                            fontWeight: 650,
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button
-                        onClick={checkAnswer}
-                        disabled={busy || checked || !currentAnswer.trim()}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: checked ? "rgba(255,255,255,0.10)" : "rgba(34,197,94,0.22)",
-                          color: "white",
-                          cursor: busy || checked ? "not-allowed" : "pointer",
-                          fontWeight: 950,
-                        }}
-                      >
-                        {checked ? "Gecheckt" : "Check"}
-                      </button>
-
-                      <button
-                        onClick={prev}
-                        disabled={!canGoPrev || busy}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: "rgba(255,255,255,0.06)",
-                          color: "white",
-                          cursor: !canGoPrev || busy ? "not-allowed" : "pointer",
-                          fontWeight: 850,
-                        }}
-                      >
-                        ← Vorige
-                      </button>
-
-                      <button
-                        onClick={next}
-                        disabled={!canGoNext || busy || !checked}
-                        title={!checked ? "Eerst checken" : ""}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: !checked ? "rgba(255,255,255,0.08)" : "rgba(99,102,241,0.25)",
-                          color: "white",
-                          cursor: !canGoNext || busy || !checked ? "not-allowed" : "pointer",
-                          fontWeight: 950,
-                        }}
-                      >
-                        Volgende →
-                      </button>
-                    </div>
-
-                    {checked && (
-                      <div
-                        style={{
-                          marginTop: 12,
-                          padding: 12,
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          background: "rgba(0,0,0,0.20)",
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          <Badge text="Correct antwoord" />
-                          <div style={{ fontWeight: 950 }}>{q.answer}</div>
-                        </div>
-
-                        <div style={{ marginTop: 8, opacity: 0.9 }}>
-                          <Badge text="Uitleg" /> <span style={{ opacity: 0.92 }}>{q.explanation}</span>
-                        </div>
-
-                        <div style={{ marginTop: 8, opacity: 0.85, fontStyle: "italic" }}>
-                          <Badge text="Bewijs" /> <span style={{ opacity: 0.90 }}>{q.evidence}</span>
-                        </div>
-
-                        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-                          Scoring: {reasonByIndex[index] ?? ""}
-                        </div>
+                        <Pill>{q.type}</Pill>
+                        <Pill>{q.difficulty}</Pill>
+                        {checked && (
+                          <Pill>
+                            {pts >= 1 ? "✅ 1.0" : pts >= 0.5 ? "🟨 0.5" : "❌ 0.0"} {label ? `(${label})` : ""}
+                          </Pill>
+                        )}
                       </div>
-                    )}
-                  </>
-                );
-              })()}
+
+                      <div style={{ marginTop: 12, fontSize: 18 }}>
+                        <b>{q.question}</b>
+                      </div>
+
+                      <div style={{ marginTop: 12 }}>
+                        {isMC && q.choices?.length ? (
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {q.choices.map((choice, idx) => {
+                              const selected = currentAnswer === choice;
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => setCurrentAnswer(choice)}
+                                  disabled={busy || checked}
+                                  style={{
+                                    textAlign: "left",
+                                    padding: "10px 12px",
+                                    borderRadius: 14,
+                                    border: "1px solid rgba(255,255,255,0.14)",
+                                    background: selected ? "rgba(99,102,241,0.25)" : "rgba(0,0,0,0.18)",
+                                    color: "white",
+                                    cursor: busy || checked ? "not-allowed" : "pointer",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {choice}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <input
+                            value={currentAnswer}
+                            onChange={(e) => setCurrentAnswer(e.target.value)}
+                            disabled={busy || checked}
+                            placeholder="Typ je antwoord…"
+                            style={{
+                              width: "100%",
+                              padding: "10px 12px",
+                              borderRadius: 14,
+                              border: "1px solid rgba(255,255,255,0.14)",
+                              background: "rgba(0,0,0,0.18)",
+                              color: "white",
+                              outline: "none",
+                              fontSize: 15,
+                              fontWeight: 650,
+                            }}
+                          />
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          onClick={checkAnswer}
+                          disabled={busy || checked || !currentAnswer.trim()}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: checked ? "rgba(255,255,255,0.10)" : "rgba(34,197,94,0.22)",
+                            color: "white",
+                            cursor: busy || checked ? "not-allowed" : "pointer",
+                            fontWeight: 950,
+                          }}
+                        >
+                          {checked ? "Gecheckt" : "Check"}
+                        </button>
+
+                        <button
+                          onClick={prev}
+                          disabled={!canGoPrev || busy}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "white",
+                            cursor: !canGoPrev || busy ? "not-allowed" : "pointer",
+                            fontWeight: 850,
+                          }}
+                        >
+                          ← Vorige
+                        </button>
+
+                        <button
+                          onClick={next}
+                          disabled={!canGoNext || busy || !checked}
+                          title={!checked ? "Eerst checken" : ""}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: !checked ? "rgba(255,255,255,0.08)" : "rgba(99,102,241,0.25)",
+                            color: "white",
+                            cursor: !canGoNext || busy || !checked ? "not-allowed" : "pointer",
+                            fontWeight: 950,
+                          }}
+                        >
+                          Volgende →
+                        </button>
+                      </div>
+
+                      {checked && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            padding: 12,
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            background: "rgba(0,0,0,0.20)",
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <Badge text="Correct antwoord" />
+                            <div style={{ fontWeight: 950 }}>{q.answer}</div>
+                          </div>
+
+                          <div style={{ marginTop: 8, opacity: 0.9 }}>
+                            <Badge text="Uitleg" /> <span style={{ opacity: 0.92 }}>{q.explanation}</span>
+                          </div>
+
+                          <div style={{ marginTop: 8, opacity: 0.85, fontStyle: "italic" }}>
+                            <Badge text="Bewijs" /> <span style={{ opacity: 0.90 }}>{q.evidence}</span>
+                          </div>
+
+                          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+                            Scoring: {reasonByIndex[index] ?? ""}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             </div>
-          </div>
+          </Reveal>
         )}
 
         <style jsx>{`
