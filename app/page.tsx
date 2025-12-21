@@ -174,10 +174,6 @@ export default function Home() {
                 >
                   Start studying →
                 </Link>
-
-                <div style={{ opacity: 0.75, fontSize: 13 }}>
-                  No login for MVP.
-                </div>
               </div>
             </div>
           </Reveal>
