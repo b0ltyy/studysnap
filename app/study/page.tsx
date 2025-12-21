@@ -1,15 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import LoginButton from "@/components/LoginButton";
+import { useEffect, useMemo, useState } from "react";
 import AuthPanel from "@/components/AuthPanel";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
-import { useEffect } from "react";
-
-
-<LoginButton />
-
 
 type Q = {
   type: "short_answer" | "true_false" | "multiple_choice";
@@ -34,7 +28,6 @@ function shuffle<T>(arr: T[]): T[] {
   }
   return a;
 }
-
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
@@ -82,7 +75,6 @@ async function fileToBase64NoPrefix(file: File): Promise<string> {
 }
 
 // ---------- SMART SCORING ----------
-
 function normalize(s: string) {
   return (s ?? "")
     .trim()
@@ -243,9 +235,9 @@ function scoreAnswer(q: Q, userAnswer: string): ScoreResult {
 }
 
 export default function StudyPage() {
-    const [user, setUser] = useState<User | null>(null);
-const [sessions, setSessions] = useState<any[]>([]);
-const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -255,7 +247,6 @@ const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
 
   const [retryMode, setRetryMode] = useState(false);
-
 
   const questionCount = useMemo(() => {
     const n = parseInt(questionCountInput, 10);
@@ -296,10 +287,13 @@ const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
 
   const checkedCount = useMemo(() => Object.keys(checkedByIndex).length, [checkedByIndex]);
 
+  const finished = quizStarted && visibleQuestions.length > 0 ? checkedCount >= visibleQuestions.length : false;
+
   function resetAll() {
     setError(null);
     setResult(null);
     setQuizStarted(false);
+    setRetryMode(false);
     setIndex(0);
     setCurrentAnswer("");
     setChecked(false);
@@ -308,6 +302,7 @@ const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
     setReasonByIndex({});
     setAnswersByIndex({});
     setCheckedByIndex({});
+    setSavedRunKey(null);
   }
 
   function retryWrongQuestions() {
@@ -326,7 +321,6 @@ const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
       questions: shuffle(wrongQuestions),
     });
 
-    // reset quiz state
     setRetryMode(true);
     setQuizStarted(true);
     setIndex(0);
@@ -339,56 +333,69 @@ const [savedRunKey, setSavedRunKey] = useState<string | null>(null);
     setCheckedByIndex({});
   }
 
+  // ✅ LOAD history (geen insert!)
   async function loadSessions(u: User) {
-  const { data, error } = await supabase
-    .from("study_sessions")
-    .select("id, created_at, total_questions, score, max_score, mode")
-    .order("created_at", { ascending: false })
-    .limit(10);
+    const supabase = getSupabase();
 
-  if (!error) setSessions(data ?? []);
-}
+    const { data, error } = await supabase
+      .from("study_sessions")
+      .select("*")
+      .eq("user_id", u.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-async function saveSessionOnce(params: {
-  mode: "normal" | "retry";
-  score: number;
-  maxScore: number;
-  total: number;
-  topic?: string | null;
-}) {
-  if (!user) return;
+    if (error) {
+      // stil failen, niet je hele app slopen
+      console.error("Load sessions error:", error);
+      return;
+    }
 
-  // unieke key per run (mode + score + aantal + timestamp-minute-ish)
-  const key = `${params.mode}:${params.score}:${params.maxScore}:${params.total}:${result?.title ?? ""}:${checkedCount}`;
-  if (savedRunKey === key) return;
-
-  const { error } = await supabase.from("study_sessions").insert({
-    user_id: user.id,
-    mode: params.mode,
-    score: params.score,
-    max_score: params.maxScore,
-    total_questions: params.total,
-    topic: params.topic ?? result?.title ?? null,
-  });
-
-  if (!error) {
-    setSavedRunKey(key);
-    await loadSessions(user);
+    setSessions(data ?? []);
   }
-}
 
-// auto-load sessions when user logs in
-useEffect(() => {
-  if (user) loadSessions(user);
-  else setSessions([]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [user]);
+  async function saveSessionOnce(params: {
+    mode: "normal" | "retry";
+    score: number;
+    maxScore: number;
+    total: number;
+    topic?: string | null;
+  }) {
+    if (!user) return;
+    const supabase = getSupabase();
 
+    // unieke key per run (zodat finish-effect niet dubbel opslaat)
+    const key = `${params.mode}:${params.score}:${params.maxScore}:${params.total}:${result?.title ?? ""}:${checkedCount}`;
+    if (savedRunKey === key) return;
+
+    const { error } = await supabase.from("study_sessions").insert({
+      user_id: user.id,
+      mode: params.mode,
+      score: params.score,
+      max_score: params.maxScore,
+      total_questions: params.total,
+      topic: params.topic ?? result?.title ?? null,
+    });
+
+    if (!error) {
+      setSavedRunKey(key);
+      await loadSessions(user);
+    } else {
+      console.error("Save session error:", error);
+    }
+  }
+
+  // auto-load sessions when user logs in
+  useEffect(() => {
+    if (user) loadSessions(user);
+    else setSessions([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   async function generate() {
     setError(null);
     setResult(null);
     setQuizStarted(false);
+    setRetryMode(false);
     setIndex(0);
     setCurrentAnswer("");
     setChecked(false);
@@ -397,36 +404,7 @@ useEffect(() => {
     setReasonByIndex({});
     setAnswersByIndex({});
     setCheckedByIndex({});
-
-function retryWrongQuestions() {
-  if (!result) return;
-
-  const wrongIndexes = Object.entries(pointsByIndex)
-    .filter(([_, p]) => p < 1)
-    .map(([i]) => Number(i));
-
-  if (wrongIndexes.length === 0) return;
-
-  const wrongQuestions = wrongIndexes.map((i) => result.questions[i]);
-
-  setResult({
-    ...result,
-    questions: shuffle(wrongQuestions),
-  });
-
-  // reset quiz state
-  setRetryMode(true);
-  setQuizStarted(true);
-  setIndex(0);
-  setCurrentAnswer("");
-  setChecked(false);
-  setPointsByIndex({});
-  setLabelByIndex({});
-  setReasonByIndex({});
-  setAnswersByIndex({});
-  setCheckedByIndex({});
-}
-
+    setSavedRunKey(null);
 
     if (!file) {
       setError("Kies een foto (liefst recht en scherp).");
@@ -453,18 +431,17 @@ function retryWrongQuestions() {
       if (!res.ok || !json?.ok) throw new Error(json?.error || raw || `HTTP ${res.status}`);
 
       const data = json.data as Result;
-if (!data?.questions?.length) {
-  throw new Error("AI gaf geen vragen terug. Probeer een scherpere foto.");
-}
+      if (!data?.questions?.length) {
+        throw new Error("AI gaf geen vragen terug. Probeer een scherpere foto.");
+      }
 
-// 🔀 RANDOMIZE QUESTIONS
-const shuffled = shuffle(data.questions);
+      // 🔀 RANDOMIZE QUESTIONS
+      const shuffled = shuffle(data.questions);
 
-setResult({
-  ...data,
-  questions: shuffled,
-});
-
+      setResult({
+        ...data,
+        questions: shuffled,
+      });
 
       const available = data.questions.length;
       const desired = parseInt(questionCountInput, 10);
@@ -494,17 +471,17 @@ setResult({
     const q = visibleQuestions[index];
     if (!q) return;
 
-    const user = currentAnswer ?? "";
+    const ua = currentAnswer ?? "";
     const alreadyChecked = checkedByIndex[index] ?? false;
     if (alreadyChecked) {
       setChecked(true);
       return;
     }
 
-    const scored = scoreAnswer(q, user);
+    const scored = scoreAnswer(q, ua);
 
     setChecked(true);
-    setAnswersByIndex((prev) => ({ ...prev, [index]: user }));
+    setAnswersByIndex((prev) => ({ ...prev, [index]: ua }));
     setCheckedByIndex((prev) => ({ ...prev, [index]: true }));
     setPointsByIndex((prev) => ({ ...prev, [index]: scored.points }));
     setLabelByIndex((prev) => ({ ...prev, [index]: scored.label }));
@@ -527,25 +504,23 @@ setResult({
     setChecked(checkedByIndex[newIndex] ?? false);
   }
 
-  const finished = quizStarted && visibleQuestions.length > 0 ? checkedCount >= visibleQuestions.length : false;
-
+  // save session once when finished
   useEffect(() => {
-  if (!finished) return;
-  if (!user) return;
+    if (!finished) return;
+    if (!user) return;
 
-  const maxScore = visibleQuestions.length; // 1 punt per vraag
-  const score = totalPoints;
+    const maxScore = visibleQuestions.length; // 1 punt per vraag
+    const score = totalPoints;
 
-  saveSessionOnce({
-    mode: retryMode ? "retry" : "normal",
-    score,
-    maxScore,
-    total: visibleQuestions.length,
-    topic: result?.title ?? null,
-  });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [finished, user]);
-
+    saveSessionOnce({
+      mode: retryMode ? "retry" : "normal",
+      score,
+      maxScore,
+      total: visibleQuestions.length,
+      topic: result?.title ?? null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished, user]);
 
   return (
     <div style={{ minHeight: "100vh", background: pageBg, color: "white" }}>
@@ -554,19 +529,19 @@ setResult({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img
-  src="/logo.png"
-  alt="StudySnap"
-  width={34}
-  height={34}
-  style={{
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    objectFit: "cover",
-    border: "1px solid rgba(255,255,255,0.10)",
-    boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
-  }}
-/>
+              src="/logo.png"
+              alt="StudySnap"
+              width={34}
+              height={34}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 12,
+                objectFit: "cover",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+              }}
+            />
 
             <div style={{ lineHeight: 1.05 }}>
               <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>StudySnap</div>
@@ -582,6 +557,7 @@ setResult({
 
         {/* App */}
         <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, alignItems: "start" }}>
+          {/* Left */}
           <div
             style={{
               borderRadius: 18,
@@ -731,118 +707,113 @@ setResult({
             )}
           </div>
 
-          {/* Progress card */}
+          {/* Right */}
+          <div>
+            <div
+              style={{
+                marginTop: 0,
+                borderRadius: 18,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.04)",
+                padding: 16,
+              }}
+            >
+              <div style={{ fontWeight: 950, marginBottom: 8 }}>Account</div>
+              <AuthPanel onUser={setUser} />
+            </div>
 
             <div
-  style={{
-    marginTop: 12,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.04)",
-    padding: 16,
-  }}
->
-  <div style={{ fontWeight: 950, marginBottom: 8 }}>Account</div>
-  <AuthPanel onUser={setUser} />
-</div>
+              style={{
+                marginTop: 12,
+                borderRadius: 18,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.04)",
+                padding: 16,
+              }}
+            >
+              <div style={{ fontWeight: 950, marginBottom: 8 }}>History</div>
 
-<div
-  style={{
-    marginTop: 12,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.04)",
-    padding: 16,
-  }}
->
-  <div style={{ fontWeight: 950, marginBottom: 8 }}>History</div>
+              {!user ? (
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Log in om je sessies te bewaren.</div>
+              ) : sessions.length === 0 ? (
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Nog geen sessies. Maak je eerste quiz af.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sessions.map((s) => {
+                    const pct = s.max_score ? Math.round((Number(s.score) / Number(s.max_score)) * 100) : 0;
+                    const date = new Date(s.created_at).toLocaleString();
+                    return (
+                      <div
+                        key={s.id}
+                        style={{
+                          padding: 10,
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(0,0,0,0.18)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          alignItems: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          <div style={{ fontWeight: 900, opacity: 0.95 }}>
+                            {s.mode === "retry" ? "🔁 Retry" : "✅ Normal"} • {pct}%
+                          </div>
+                          <div>{date}</div>
+                        </div>
+                        <div style={{ fontWeight: 950 }}>
+                          {Number(s.score).toFixed(1)}/{Number(s.max_score).toFixed(0)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-  {!user ? (
-    <div style={{ fontSize: 13, opacity: 0.8 }}>
-      Log in om je sessies te bewaren.
-    </div>
-  ) : sessions.length === 0 ? (
-    <div style={{ fontSize: 13, opacity: 0.8 }}>
-      Nog geen sessies. Maak je eerste quiz af.
-    </div>
-  ) : (
-    <div style={{ display: "grid", gap: 8 }}>
-      {sessions.map((s) => {
-        const pct = s.max_score ? Math.round((Number(s.score) / Number(s.max_score)) * 100) : 0;
-        const date = new Date(s.created_at).toLocaleString();
-        return (
-          <div
-            key={s.id}
-            style={{
-              padding: 10,
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(0,0,0,0.18)",
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              <div style={{ fontWeight: 900, opacity: 0.95 }}>
-                {s.mode === "retry" ? "🔁 Retry" : "✅ Normal"} • {pct}%
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: 18,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.04)",
+                padding: 16,
+              }}
+            >
+              <div style={{ fontWeight: 950, marginBottom: 8 }}>Progress</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Pill>
+                  Checked <b style={{ marginLeft: 6 }}>{checkedCount}/{visibleQuestions.length}</b>
+                </Pill>
+                <Pill>
+                  Score <b style={{ marginLeft: 6 }}>{totalPoints.toFixed(1)}/{visibleQuestions.length}</b>
+                </Pill>
+                {finished && (
+                  <>
+                    <Pill>🎉 klaar</Pill>
+                    <button
+                      onClick={retryWrongQuestions}
+                      style={{
+                        marginLeft: 8,
+                        padding: "6px 10px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(255,193,7,0.20)",
+                        color: "white",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🔁 Herhaal foutjes
+                    </button>
+                  </>
+                )}
               </div>
-              <div>{date}</div>
-            </div>
-            <div style={{ fontWeight: 950 }}>
-              {Number(s.score).toFixed(1)}/{Number(s.max_score).toFixed(0)}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  )}
-</div>
 
-
-          <div
-            style={{
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(255,255,255,0.04)",
-              padding: 16,
-            }}
-          >
-            <div style={{ fontWeight: 950, marginBottom: 8 }}>Progress</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Pill>
-                Checked <b style={{ marginLeft: 6 }}>{checkedCount}/{visibleQuestions.length}</b>
-              </Pill>
-              <Pill>
-                Score <b style={{ marginLeft: 6 }}>{totalPoints.toFixed(1)}/{visibleQuestions.length}</b>
-              </Pill>
-              {finished && (
-  <>
-    <Pill>🎉 klaar</Pill>
-
-    <button
-      onClick={retryWrongQuestions}
-      style={{
-        marginLeft: 8,
-        padding: "6px 10px",
-        borderRadius: 10,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(255,193,7,0.20)",
-        color: "white",
-        fontWeight: 900,
-        cursor: "pointer",
-      }}
-    >
-      🔁 Herhaal foutjes
-    </button>
-  </>
-)}
-
-            </div>
-
-            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
-              ✅ 1.0 correct • 🟨 0.5 almost • ❌ 0.0 wrong
+              <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
+                ✅ 1.0 correct • 🟨 0.5 almost • ❌ 0.0 wrong
+              </div>
             </div>
           </div>
         </div>
