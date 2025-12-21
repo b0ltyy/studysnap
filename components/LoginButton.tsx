@@ -1,30 +1,33 @@
 "use client";
 
-import { supabase } from "@/lib/supabaseClient";
 import { useState } from "react";
+import { getSupabase } from "@/lib/supabaseClient";
 
 export default function LoginButton() {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   async function login() {
-    await supabase.auth.signInWithOtp({ email });
-    setSent(true);
-  }
-
-  if (sent) {
-    return <p>📩 Check je mail voor de login link</p>;
+    setBusy(true);
+    try {
+      const supabase = getSupabase();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo:
+            typeof window !== "undefined"
+              ? window.location.origin + "/study"
+              : undefined,
+        },
+      });
+      if (error) console.error(error);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="email@student.be"
-        style={{ padding: 8 }}
-      />
-      <button onClick={login}>Login</button>
-    </div>
+    <button onClick={login} disabled={busy}>
+      {busy ? "Loading..." : "Login"}
+    </button>
   );
 }
