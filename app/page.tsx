@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 
 type Q = {
   type: "short_answer" | "true_false" | "multiple_choice";
@@ -420,15 +421,13 @@ export default function Home() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: "linear-gradient(135deg, rgba(99,102,241,1), rgba(34,197,94,0.85))",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-            }}
-          />
+<Image
+  src="/logo.png"
+  alt="StudySnap logo"
+  width={120}
+  height={120}
+  style={{ borderRadius: 10 }}
+/>
           <div style={{ lineHeight: 1.1 }}>
             <div style={{ fontWeight: 800, letterSpacing: 0.2 }}>StudySnap</div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>smart scoring</div>
