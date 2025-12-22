@@ -17,7 +17,7 @@ export default function AuthPanel({
     const supabase = getSupabase();
 
     (async () => {
-      // 1) huidige user ophalen
+      // 1) fetch current user
       const { data, error } = await supabase.auth.getUser();
       if (!mounted) return;
 
@@ -31,7 +31,7 @@ export default function AuthPanel({
       }
       setLoading(false);
 
-      // 2) luisteren naar auth changes
+      // 2) listen to auth changes
       const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
         const nextUser = session?.user ?? null;
         setUser(nextUser);
@@ -57,16 +57,21 @@ export default function AuthPanel({
     return (
       <div style={{ display: "grid", gap: 10 }}>
         <div style={{ fontSize: 13, opacity: 0.8 }}>
-          Niet ingelogd.
+          Not logged in.
         </div>
 
-        {/* Simpele login knoppen (email+password kan ook, maar dit is MVP) */}
+        {/* Simple login buttons (email+password is also possible, but this is MVP) */}
         <button
           onClick={async () => {
             const supabase = getSupabase();
             const { error } = await supabase.auth.signInWithOAuth({
               provider: "google",
-              options: { redirectTo: typeof window !== "undefined" ? window.location.origin + "/study" : undefined },
+              options: {
+                redirectTo:
+                  typeof window !== "undefined"
+                    ? window.location.origin + "/study"
+                    : undefined,
+              },
             });
             if (error) console.error("signInWithOAuth error:", error);
           }}
@@ -80,7 +85,7 @@ export default function AuthPanel({
             cursor: "pointer",
           }}
         >
-          Login met Google
+          Log in with Google
         </button>
       </div>
     );
@@ -89,7 +94,7 @@ export default function AuthPanel({
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div style={{ fontSize: 13, opacity: 0.9 }}>
-        Ingelogd als <b>{user.email ?? user.id}</b>
+        Logged in as <b>{user.email ?? user.id}</b>
       </div>
 
       <button

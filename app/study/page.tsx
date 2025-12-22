@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import AuthPanel from "@/components/AuthPanel";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -88,13 +89,19 @@ function normalize(s: string) {
 function levenshtein(a: string, b: string) {
   const m = a.length;
   const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    Array(n + 1).fill(0)
+  );
   for (let i = 0; i <= m; i++) dp[i][0] = i;
   for (let j = 0; j <= n; j++) dp[0][j] = j;
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
     }
   }
   return dp[m][n];
@@ -182,28 +189,35 @@ type ScoreResult = {
 
 function scoreAnswer(q: Q, userAnswer: string): ScoreResult {
   const uaRaw = (userAnswer ?? "").trim();
-  if (!uaRaw) return { points: 0, label: "wrong", reason: "Geen antwoord." };
+  if (!uaRaw) return { points: 0, label: "wrong", reason: "No answer." };
 
   if (q.type === "multiple_choice") {
     const ok = normalize(uaRaw) === normalize(q.answer);
     return ok
       ? { points: 1, label: "correct", reason: "Exact match (multiple choice)." }
-      : { points: 0, label: "wrong", reason: "Fout gekozen." };
+      : { points: 0, label: "wrong", reason: "Wrong choice." };
   }
 
   if (q.type === "true_false") {
     const userTF = parseTrueFalse(uaRaw);
     const ansTF = parseTrueFalse(q.answer);
-    if (userTF === null) return { points: 0, label: "wrong", reason: "Gebruik waar/onwaar of juist/fout." };
+    if (userTF === null)
+      return {
+        points: 0,
+        label: "wrong",
+        reason: "Use true/false or correct/wrong.",
+      };
 
     if (ansTF === null) {
       const ok = normalize(uaRaw) === normalize(q.answer);
-      return ok ? { points: 1, label: "correct", reason: "Match." } : { points: 0, label: "wrong", reason: "Fout." };
+      return ok
+        ? { points: 1, label: "correct", reason: "Match." }
+        : { points: 0, label: "wrong", reason: "Wrong." };
     }
 
     return userTF === ansTF
-      ? { points: 1, label: "correct", reason: "Correct waar/onwaar." }
-      : { points: 0, label: "wrong", reason: "Fout waar/onwaar." };
+      ? { points: 1, label: "correct", reason: "Correct true/false." }
+      : { points: 0, label: "wrong", reason: "Wrong true/false." };
   }
 
   const candidates = splitPossibleAnswers(q.answer);
@@ -232,10 +246,26 @@ function scoreAnswer(q: Q, userAnswer: string): ScoreResult {
   const combined = Math.max(bestSim, bestSim * 0.65 + bestJ * 0.35) + containsBoost;
 
   if (combined >= 0.88)
-    return { points: 1, label: "correct", reason: `Sterke match (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
+    return {
+      points: 1,
+      label: "correct",
+      reason: `Strong match (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(
+        2
+      )}).`,
+    };
   if (combined >= 0.68)
-    return { points: 0.5, label: "partial", reason: `Bijna goed (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
-  return { points: 0, label: "wrong", reason: `Te ver af (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).` };
+    return {
+      points: 0.5,
+      label: "partial",
+      reason: `Almost right (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(
+        2
+      )}).`,
+    };
+  return {
+    points: 0,
+    label: "wrong",
+    reason: `Too far off (sim ${bestSim.toFixed(2)}, kw ${bestJ.toFixed(2)}).`,
+  };
 }
 
 export default function StudyPage() {
@@ -269,11 +299,19 @@ export default function StudyPage() {
   const [currentAnswer, setCurrentAnswer] = useState("");
   const [checked, setChecked] = useState(false);
 
-  const [pointsByIndex, setPointsByIndex] = useState<Record<number, 0 | 0.5 | 1>>({});
-  const [labelByIndex, setLabelByIndex] = useState<Record<number, "correct" | "partial" | "wrong">>({});
+  const [pointsByIndex, setPointsByIndex] = useState<Record<number, 0 | 0.5 | 1>>(
+    {}
+  );
+  const [labelByIndex, setLabelByIndex] = useState<
+    Record<number, "correct" | "partial" | "wrong">
+  >({});
   const [reasonByIndex, setReasonByIndex] = useState<Record<number, string>>({});
-  const [answersByIndex, setAnswersByIndex] = useState<Record<number, string>>({});
-  const [checkedByIndex, setCheckedByIndex] = useState<Record<number, boolean>>({});
+  const [answersByIndex, setAnswersByIndex] = useState<Record<number, string>>(
+    {}
+  );
+  const [checkedByIndex, setCheckedByIndex] = useState<Record<number, boolean>>(
+    {}
+  );
 
   const fileInfo = useMemo(() => {
     if (!file) return null;
@@ -289,9 +327,15 @@ export default function StudyPage() {
     return visibleQuestions.reduce((sum, _q, i) => sum + (pointsByIndex[i] ?? 0), 0);
   }, [visibleQuestions, pointsByIndex, quizStarted]);
 
-  const checkedCount = useMemo(() => Object.keys(checkedByIndex).length, [checkedByIndex]);
+  const checkedCount = useMemo(
+    () => Object.keys(checkedByIndex).length,
+    [checkedByIndex]
+  );
 
-  const finished = quizStarted && visibleQuestions.length > 0 ? checkedCount >= visibleQuestions.length : false;
+  const finished =
+    quizStarted && visibleQuestions.length > 0
+      ? checkedCount >= visibleQuestions.length
+      : false;
 
   function resetAll() {
     setError(null);
@@ -364,7 +408,9 @@ export default function StudyPage() {
     if (!user) return;
     const supabase = getSupabase();
 
-    const key = `${params.mode}:${params.score}:${params.maxScore}:${params.total}:${result?.title ?? ""}:${checkedCount}`;
+    const key = `${params.mode}:${params.score}:${params.maxScore}:${params.total}:${
+      result?.title ?? ""
+    }:${checkedCount}`;
     if (savedRunKey === key) return;
 
     const { error } = await supabase.from("study_sessions").insert({
@@ -406,7 +452,7 @@ export default function StudyPage() {
     setSavedRunKey(null);
 
     if (!file) {
-      setError("Kies een foto (liefst recht en scherp).");
+      setError("Choose a photo (preferably straight and sharp).");
       return;
     }
 
@@ -430,14 +476,16 @@ export default function StudyPage() {
       if (!res.ok || !json?.ok) throw new Error(json?.error || raw || `HTTP ${res.status}`);
 
       const data = json.data as Result;
-      if (!data?.questions?.length) throw new Error("AI gaf geen vragen terug. Probeer een scherpere foto.");
+      if (!data?.questions?.length)
+        throw new Error("The AI returned no questions. Try a sharper photo.");
 
       const shuffled = shuffle(data.questions);
       setResult({ ...data, questions: shuffled });
 
       const available = data.questions.length;
       const desired = parseInt(questionCountInput, 10);
-      if (Number.isFinite(desired) && desired > available) setQuestionCountInput(String(available));
+      if (Number.isFinite(desired) && desired > available)
+        setQuestionCountInput(String(available));
     } catch (e: any) {
       setError(e?.message ?? "Error");
     } finally {
@@ -514,28 +562,47 @@ export default function StudyPage() {
       <div style={{ maxWidth: 1120, margin: "0 auto", padding: "18px 16px" }}>
         {/* Header */}
         <Reveal>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img
-                src="/logo.png"
-                alt="StudySnap"
-                width={34}
-                height={34}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <Link href="/" style={{ textDecoration: "none", color: "inherit" }}>
+              <div
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 12,
-                  objectFit: "cover",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  cursor: "pointer",
                 }}
-              />
+              >
+                <img
+                  src="/logo.png"
+                  alt="StudySnap"
+                  width={34}
+                  height={34}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 12,
+                    objectFit: "cover",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+                  }}
+                />
 
-              <div style={{ lineHeight: 1.05 }}>
-                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>StudySnap</div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>Study mode</div>
+                <div style={{ lineHeight: 1.05 }}>
+                  <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>
+                    StudySnap
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>Study mode</div>
+                </div>
               </div>
-            </div>
+            </Link>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Pill>🧠 smart scoring</Pill>
@@ -545,7 +612,15 @@ export default function StudyPage() {
         </Reveal>
 
         {/* App grid */}
-        <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, alignItems: "start" }}>
+        <div
+          style={{
+            marginTop: 16,
+            display: "grid",
+            gridTemplateColumns: "1.1fr 0.9fr",
+            gap: 16,
+            alignItems: "start",
+          }}
+        >
           {/* Left */}
           <Reveal delay={0.05}>
             <div
@@ -557,9 +632,18 @@ export default function StudyPage() {
                 boxShadow: "0 35px 100px rgba(0,0,0,0.35)",
               }}
             >
-              <div style={{ fontWeight: 950, marginBottom: 8 }}>Upload & generate</div>
+              <div style={{ fontWeight: 950, marginBottom: 8 }}>
+                Upload & generate
+              </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
                 <label
                   style={{
                     display: "inline-flex",
@@ -574,7 +658,12 @@ export default function StudyPage() {
                   }}
                 >
                   📷 Upload photo
-                  <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    style={{ display: "none" }}
+                  />
                 </label>
 
                 <button
@@ -584,7 +673,9 @@ export default function StudyPage() {
                     padding: "10px 14px",
                     borderRadius: 14,
                     border: "1px solid rgba(99,102,241,0.55)",
-                    background: busy ? "rgba(255,255,255,0.12)" : "linear-gradient(135deg, rgba(99,102,241,0.95), rgba(34,197,94,0.80))",
+                    background: busy
+                      ? "rgba(255,255,255,0.12)"
+                      : "linear-gradient(135deg, rgba(99,102,241,0.95), rgba(34,197,94,0.80))",
                     color: busy ? "rgba(255,255,255,0.7)" : "white",
                     cursor: busy ? "not-allowed" : "pointer",
                     fontWeight: 950,
@@ -610,16 +701,29 @@ export default function StudyPage() {
                 </button>
               </div>
 
-              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 <div style={{ fontSize: 12, opacity: 0.85 }}>Questions:</div>
                 <input
                   type="text"
                   inputMode="numeric"
                   value={questionCountInput}
-                  onChange={(e) => setQuestionCountInput(e.target.value.replace(/\D/g, ""))}
+                  onChange={(e) =>
+                    setQuestionCountInput(e.target.value.replace(/\D/g, ""))
+                  }
                   onBlur={() => {
                     if (!questionCountInput) return setQuestionCountInput("10");
-                    const n = Math.max(1, Math.min(50, parseInt(questionCountInput, 10)));
+                    const n = Math.max(
+                      1,
+                      Math.min(50, parseInt(questionCountInput, 10))
+                    );
                     setQuestionCountInput(String(n));
                   }}
                   disabled={busy}
@@ -641,16 +745,28 @@ export default function StudyPage() {
                 {result && (
                   <>
                     <Pill>
-                      Available: <b style={{ marginLeft: 6 }}>{result.questions.length}</b>
+                      Available:{" "}
+                      <b style={{ marginLeft: 6 }}>{result.questions.length}</b>
                     </Pill>
                     <Pill>
-                      Using: <b style={{ marginLeft: 6 }}>{visibleQuestions.length}</b>
+                      Using:{" "}
+                      <b style={{ marginLeft: 6 }}>
+                        {visibleQuestions.length}
+                      </b>
                     </Pill>
                   </>
                 )}
               </div>
 
-              <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 {fileInfo ? (
                   <>
                     <Pill>✅ {fileInfo.name}</Pill>
@@ -728,13 +844,21 @@ export default function StudyPage() {
                 <div style={{ fontWeight: 950, marginBottom: 8 }}>History</div>
 
                 {!user ? (
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Log in om je sessies te bewaren.</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Log in to save your sessions.
+                  </div>
                 ) : sessions.length === 0 ? (
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Nog geen sessies. Maak je eerste quiz af.</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    No sessions yet. Finish your first quiz.
+                  </div>
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>
                     {sessions.map((s) => {
-                      const pct = s.max_score ? Math.round((Number(s.score) / Number(s.max_score)) * 100) : 0;
+                      const pct = s.max_score
+                        ? Math.round(
+                            (Number(s.score) / Number(s.max_score)) * 100
+                          )
+                        : 0;
                       const date = new Date(s.created_at).toLocaleString();
                       return (
                         <div
@@ -752,12 +876,14 @@ export default function StudyPage() {
                         >
                           <div style={{ fontSize: 12, opacity: 0.8 }}>
                             <div style={{ fontWeight: 900, opacity: 0.95 }}>
-                              {s.mode === "retry" ? "🔁 Retry" : "✅ Normal"} • {pct}%
+                              {s.mode === "retry" ? "🔁 Retry" : "✅ Normal"} •{" "}
+                              {pct}%
                             </div>
                             <div>{date}</div>
                           </div>
                           <div style={{ fontWeight: 950 }}>
-                            {Number(s.score).toFixed(1)}/{Number(s.max_score).toFixed(0)}
+                            {Number(s.score).toFixed(1)}/
+                            {Number(s.max_score).toFixed(0)}
                           </div>
                         </div>
                       );
@@ -780,14 +906,20 @@ export default function StudyPage() {
                 <div style={{ fontWeight: 950, marginBottom: 8 }}>Progress</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Pill>
-                    Checked <b style={{ marginLeft: 6 }}>{checkedCount}/{visibleQuestions.length}</b>
+                    Checked{" "}
+                    <b style={{ marginLeft: 6 }}>
+                      {checkedCount}/{visibleQuestions.length}
+                    </b>
                   </Pill>
                   <Pill>
-                    Score <b style={{ marginLeft: 6 }}>{totalPoints.toFixed(1)}/{visibleQuestions.length}</b>
+                    Score{" "}
+                    <b style={{ marginLeft: 6 }}>
+                      {totalPoints.toFixed(1)}/{visibleQuestions.length}
+                    </b>
                   </Pill>
                   {finished && (
                     <>
-                      <Pill>🎉 klaar</Pill>
+                      <Pill>🎉 done</Pill>
                       <button
                         onClick={retryWrongQuestions}
                         style={{
@@ -801,13 +933,20 @@ export default function StudyPage() {
                           cursor: "pointer",
                         }}
                       >
-                        🔁 Herhaal foutjes
+                        🔁 Retry mistakes
                       </button>
                     </>
                   )}
                 </div>
 
-                <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
+                <div
+                  style={{
+                    marginTop: 12,
+                    fontSize: 13,
+                    opacity: 0.8,
+                    lineHeight: 1.5,
+                  }}
+                >
                   ✅ 1.0 correct • 🟨 0.5 almost • ❌ 0.0 wrong
                 </div>
               </div>
@@ -820,7 +959,9 @@ export default function StudyPage() {
           <Reveal delay={0.06}>
             <div style={{ marginTop: 18 }}>
               <div style={{ fontSize: 12, opacity: 0.7 }}>Quiz</div>
-              <div style={{ fontSize: 22, fontWeight: 950 }}>{result.title || "Oefenvragen"}</div>
+              <div style={{ fontSize: 22, fontWeight: 950 }}>
+                {result.title || "Practice questions"}
+              </div>
 
               <div
                 style={{
@@ -844,7 +985,14 @@ export default function StudyPage() {
 
                   return (
                     <>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
+                      >
                         <Pill>
                           {index + 1}/{visibleQuestions.length}
                         </Pill>
@@ -852,7 +1000,12 @@ export default function StudyPage() {
                         <Pill>{q.difficulty}</Pill>
                         {checked && (
                           <Pill>
-                            {pts >= 1 ? "✅ 1.0" : pts >= 0.5 ? "🟨 0.5" : "❌ 0.0"} {label ? `(${label})` : ""}
+                            {pts >= 1
+                              ? "✅ 1.0"
+                              : pts >= 0.5
+                              ? "🟨 0.5"
+                              : "❌ 0.0"}{" "}
+                            {label ? `(${label})` : ""}
                           </Pill>
                         )}
                       </div>
@@ -876,9 +1029,12 @@ export default function StudyPage() {
                                     padding: "10px 12px",
                                     borderRadius: 14,
                                     border: "1px solid rgba(255,255,255,0.14)",
-                                    background: selected ? "rgba(99,102,241,0.25)" : "rgba(0,0,0,0.18)",
+                                    background: selected
+                                      ? "rgba(99,102,241,0.25)"
+                                      : "rgba(0,0,0,0.18)",
                                     color: "white",
-                                    cursor: busy || checked ? "not-allowed" : "pointer",
+                                    cursor:
+                                      busy || checked ? "not-allowed" : "pointer",
                                     fontWeight: 800,
                                   }}
                                 >
@@ -892,7 +1048,7 @@ export default function StudyPage() {
                             value={currentAnswer}
                             onChange={(e) => setCurrentAnswer(e.target.value)}
                             disabled={busy || checked}
-                            placeholder="Typ je antwoord…"
+                            placeholder="Type your answer…"
                             style={{
                               width: "100%",
                               padding: "10px 12px",
@@ -916,13 +1072,15 @@ export default function StudyPage() {
                             padding: "10px 12px",
                             borderRadius: 12,
                             border: "1px solid rgba(255,255,255,0.14)",
-                            background: checked ? "rgba(255,255,255,0.10)" : "rgba(34,197,94,0.22)",
+                            background: checked
+                              ? "rgba(255,255,255,0.10)"
+                              : "rgba(34,197,94,0.22)",
                             color: "white",
                             cursor: busy || checked ? "not-allowed" : "pointer",
                             fontWeight: 950,
                           }}
                         >
-                          {checked ? "Gecheckt" : "Check"}
+                          {checked ? "Checked" : "Check"}
                         </button>
 
                         <button
@@ -934,28 +1092,34 @@ export default function StudyPage() {
                             border: "1px solid rgba(255,255,255,0.14)",
                             background: "rgba(255,255,255,0.06)",
                             color: "white",
-                            cursor: !canGoPrev || busy ? "not-allowed" : "pointer",
+                            cursor:
+                              !canGoPrev || busy ? "not-allowed" : "pointer",
                             fontWeight: 850,
                           }}
                         >
-                          ← Vorige
+                          ← Previous
                         </button>
 
                         <button
                           onClick={next}
                           disabled={!canGoNext || busy || !checked}
-                          title={!checked ? "Eerst checken" : ""}
+                          title={!checked ? "Check first" : ""}
                           style={{
                             padding: "10px 12px",
                             borderRadius: 12,
                             border: "1px solid rgba(255,255,255,0.14)",
-                            background: !checked ? "rgba(255,255,255,0.08)" : "rgba(99,102,241,0.25)",
+                            background: !checked
+                              ? "rgba(255,255,255,0.08)"
+                              : "rgba(99,102,241,0.25)",
                             color: "white",
-                            cursor: !canGoNext || busy || !checked ? "not-allowed" : "pointer",
+                            cursor:
+                              !canGoNext || busy || !checked
+                                ? "not-allowed"
+                                : "pointer",
                             fontWeight: 950,
                           }}
                         >
-                          Volgende →
+                          Next →
                         </button>
                       </div>
 
@@ -970,16 +1134,18 @@ export default function StudyPage() {
                           }}
                         >
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                            <Badge text="Correct antwoord" />
+                            <Badge text="Correct answer" />
                             <div style={{ fontWeight: 950 }}>{q.answer}</div>
                           </div>
 
                           <div style={{ marginTop: 8, opacity: 0.9 }}>
-                            <Badge text="Uitleg" /> <span style={{ opacity: 0.92 }}>{q.explanation}</span>
+                            <Badge text="Explanation" />{" "}
+                            <span style={{ opacity: 0.92 }}>{q.explanation}</span>
                           </div>
 
                           <div style={{ marginTop: 8, opacity: 0.85, fontStyle: "italic" }}>
-                            <Badge text="Bewijs" /> <span style={{ opacity: 0.90 }}>{q.evidence}</span>
+                            <Badge text="Evidence" />{" "}
+                            <span style={{ opacity: 0.90 }}>{q.evidence}</span>
                           </div>
 
                           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
